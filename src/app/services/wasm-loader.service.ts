@@ -15,8 +15,8 @@ export class WasmLoaderService {
     const script = this.document.createElement('script');
     script.type = 'module';
     script.textContent = `
-      import init, * as wasmModule from '${modulePath}';
-      await init();
+      import * as wasmModule from '${modulePath}';
+      await wasmModule.default();
       window.${moduleKey} = wasmModule;
     `;
     this.document.head.appendChild(script);

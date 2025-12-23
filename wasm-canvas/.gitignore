@@ -1,0 +1,5 @@
+# Rust build artifacts
+/target/
+
+# WASM build output (will be copied to public/)
+/pkg/
