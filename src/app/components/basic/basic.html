@@ -1,1 +1,13 @@
-<p>basic works!</p>
+<div class="wasm-demo">
+  <h2>Rust/WASM Hello World Demo</h2>
+
+  <div class="result">
+    <h3>Greeting from Rust:</h3>
+    <p>{{ greetingMessage }}</p>
+  </div>
+
+  <div class="result" *ngIf="additionResult">
+    <h3>Math from Rust:</h3>
+    <p>{{ additionResult }}</p>
+  </div>
+</div>

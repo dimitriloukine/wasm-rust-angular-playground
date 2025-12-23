@@ -1,0 +1,8 @@
+# Rust build artifacts
+/target/
+
+# WASM build output (will be copied to public/)
+/pkg/
+
+# Cargo lock file (optional - some keep it, some don't for libraries)
+# Cargo.lock
