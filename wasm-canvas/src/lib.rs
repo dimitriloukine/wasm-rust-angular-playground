@@ -8,6 +8,7 @@ pub struct SoftwareRenderer {
     width: u32,
     height: u32,
     square_size: u32,
+    offset: f32,  // Animation offset (scrolls over time)
 }
 
 // Implementation block - methods for our struct - Docs: https://doc.rust-lang.org/book/ch05-03-method-syntax.html
@@ -16,7 +17,13 @@ impl SoftwareRenderer {
     // Constructor - called from JS with SoftwareRenderer.new() - Docs: https://rustwasm.github.io/wasm-bindgen/reference/attributes/on-rust-exports.html
     pub fn new(width: u32, height: u32, square_size: u32) -> Self {
         let pixels = Vec::with_capacity((width * height * 4) as usize);
-        Self { pixels, width, height, square_size }  // Self = SoftwareRenderer type
+        Self { pixels, width, height, square_size, offset: 0.0 }  // Initialize offset to 0
+    }
+    
+    // Update animation based on time elapsed (in milliseconds)
+    pub fn update(&mut self, delta_time_ms: u32) {  // u32 = unsigned 32-bit integer - Docs: https://doc.rust-lang.org/book/ch03-02-data-types.html#integer-types
+        // Move 30 pixels per second = 0.03 pixels per millisecond
+        self.offset += 30.0 * (delta_time_ms as f32 / 1000.0);  // Convert ms to seconds for calculation
     }
     
     // Render a frame - updates the pixel buffer
@@ -25,8 +32,12 @@ impl SoftwareRenderer {
         
         for y in 0..self.height {
             for x in 0..self.width {
-                let square_x = x / self.square_size;
-                let square_y = y / self.square_size;
+                // Apply scrolling offset with wrapping (modulo prevents underflow)
+                let scroll_x = ((x as f32 - self.offset).rem_euclid(self.width as f32)) as u32;
+                let scroll_y = ((y as f32 - self.offset).rem_euclid(self.height as f32)) as u32;
+                
+                let square_x = scroll_x / self.square_size;
+                let square_y = scroll_y / self.square_size;
                 let is_red = (square_x + square_y) % 2 == 0;
                 
                 if is_red {

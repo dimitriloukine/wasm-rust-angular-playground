@@ -6,7 +6,10 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "wasm:hello": "cd wasm-hello && . \"$HOME/.cargo/env\" && wasm-pack build --target web && rm -rf ../public/wasm-hello && cp -r pkg ../public/wasm-hello",
+    "wasm:canvas": "cd wasm-canvas && . \"$HOME/.cargo/env\" && wasm-pack build --target web && rm -rf ../public/wasm-canvas && cp -r pkg ../public/wasm-canvas",
+    "wasm:all": "npm run wasm:hello && npm run wasm:canvas"
   },
   "prettier": {
     "printWidth": 100,

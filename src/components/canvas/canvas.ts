@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild, ElementRef, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef, inject } from '@angular/core';
 import { WasmLoaderService } from '../../app/services/wasm-loader.service';
 
 @Component({
@@ -7,12 +7,19 @@ import { WasmLoaderService } from '../../app/services/wasm-loader.service';
   templateUrl: './canvas.html',
   styleUrl: './canvas.scss',
 })
-export class Canvas implements OnInit {
+export class Canvas implements OnInit, OnDestroy {
   @ViewChild('canvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
   private readonly wasmLoader = inject(WasmLoaderService);
+  private animationFrameId?: number;
 
   ngOnInit(): void {
     this.setupWebGLRenderer();
+  }
+
+  ngOnDestroy(): void {
+    if (this.animationFrameId !== undefined) {
+      cancelAnimationFrame(this.animationFrameId);
+    }
   }
 
   private async setupWebGLRenderer(): Promise<void> {
@@ -41,7 +48,7 @@ export class Canvas implements OnInit {
       attribute vec2 position;
       varying vec2 texCoord;
       void main() {
-        texCoord = position * 0.5 + 0.5;
+        texCoord = vec2(position.x * 0.5 + 0.5, 1.0 - (position.y * 0.5 + 0.5));
         gl_Position = vec4(position, 0.0, 1.0);
       }
     `
@@ -64,7 +71,7 @@ export class Canvas implements OnInit {
     gl.compileShader(fragmentShader);
 
     // Link shader program
-    const program = gl.createProgram()!;
+    const program = gl.createProgram();
     gl.attachShader(program, vertexShader);
     gl.attachShader(program, fragmentShader);
     gl.linkProgram(program);
@@ -80,8 +87,21 @@ export class Canvas implements OnInit {
     gl.enableVertexAttribArray(positionLoc);
     gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
 
-    // Render loop
-    const animate = () => {
+    // Render loop with delta time tracking
+    let lastTime = 0;
+    const animate = (timestamp: number) => {
+      // Initialize lastTime on first frame
+      if (lastTime === 0) {
+        lastTime = timestamp;
+      }
+
+      const deltaTime = Math.floor(timestamp - lastTime); // Delta in milliseconds
+
+      lastTime = timestamp;
+
+      // Update animation in Rust
+      renderer.update(deltaTime);
+
       // Rust generates pixels
       renderer.render_frame();
 
@@ -97,9 +117,9 @@ export class Canvas implements OnInit {
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-      requestAnimationFrame(animate);
+      this.animationFrameId = requestAnimationFrame(animate);
     };
 
-    animate();
+    this.animationFrameId = requestAnimationFrame(animate);
   }
 }
