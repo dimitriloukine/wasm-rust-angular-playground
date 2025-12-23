@@ -1,4 +1,12 @@
-import { Component, OnInit, OnDestroy, ViewChild, ElementRef, inject } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  OnDestroy,
+  ViewChild,
+  ElementRef,
+  inject,
+  HostListener,
+} from '@angular/core';
 import { WasmLoaderService } from '../../app/services/wasm-loader.service';
 
 @Component({
@@ -11,6 +19,19 @@ export class Canvas implements OnInit, OnDestroy {
   @ViewChild('canvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
   private readonly wasmLoader = inject(WasmLoaderService);
   private animationFrameId?: number;
+
+  // Track keyboard input
+  private readonly keysPressed = new Set<string>();
+
+  @HostListener('window:keydown', ['$event'])
+  onKeyDown(event: KeyboardEvent) {
+    this.keysPressed.add(event.key);
+  }
+
+  @HostListener('window:keyup', ['$event'])
+  onKeyUp(event: KeyboardEvent) {
+    this.keysPressed.delete(event.key);
+  }
 
   ngOnInit(): void {
     this.setupWebGLRenderer();
@@ -99,8 +120,9 @@ export class Canvas implements OnInit, OnDestroy {
 
       lastTime = timestamp;
 
-      // Update animation in Rust
-      renderer.update(deltaTime);
+      // Pass pressed keys to Rust - it decides what to do with them
+      const keys = Array.from(this.keysPressed);
+      renderer.update(deltaTime, keys);
 
       // Rust generates pixels
       renderer.render_frame();

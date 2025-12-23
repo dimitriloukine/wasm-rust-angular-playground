@@ -7,6 +7,7 @@ import {
   inject,
   signal,
   computed,
+  HostListener,
 } from '@angular/core';
 import { WasmLoaderService } from '../../app/services/wasm-loader.service';
 
@@ -18,8 +19,22 @@ import { WasmLoaderService } from '../../app/services/wasm-loader.service';
 })
 export class Canvas2d implements OnInit, OnDestroy {
   @ViewChild('canvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
+
   private readonly wasmLoader = inject(WasmLoaderService);
   private animationFrameId?: number;
+
+  // Track keyboard input
+  private readonly keysPressed = new Set<string>();
+
+  @HostListener('window:keydown', ['$event'])
+  onKeyDown(event: KeyboardEvent) {
+    this.keysPressed.add(event.key);
+  }
+
+  @HostListener('window:keyup', ['$event'])
+  onKeyUp(event: KeyboardEvent) {
+    this.keysPressed.delete(event.key);
+  }
 
   frameTime = signal(1);
   frameRate = computed(() => Math.floor(1000 / this.frameTime()));
@@ -57,7 +72,8 @@ export class Canvas2d implements OnInit, OnDestroy {
       lastTime = timestamp;
 
       // Update animation in Rust
-      renderer.update(deltaTime);
+      const keys = Array.from(this.keysPressed);
+      renderer.update(deltaTime, keys);
 
       // Rust generates pixels
       renderer.render_frame();
