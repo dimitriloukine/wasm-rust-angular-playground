@@ -6,6 +6,8 @@ import {
   ElementRef,
   inject,
   HostListener,
+  computed,
+  signal,
 } from '@angular/core';
 import { WasmLoaderService } from '../../app/services/wasm-loader.service';
 
@@ -32,6 +34,9 @@ export class Canvas implements OnInit, OnDestroy {
   onKeyUp(event: KeyboardEvent) {
     this.keysPressed.delete(event.key);
   }
+
+  frameTime = signal(1);
+  frameRate = computed(() => Math.floor(1000 / this.frameTime()));
 
   ngOnInit(): void {
     this.setupWebGLRenderer();
@@ -117,6 +122,7 @@ export class Canvas implements OnInit, OnDestroy {
       }
 
       const deltaTime = Math.floor(timestamp - lastTime); // Delta in milliseconds
+      this.frameTime.set(deltaTime);
 
       lastTime = timestamp;
 
