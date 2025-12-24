@@ -10,10 +10,11 @@ import {
   signal,
 } from '@angular/core';
 import { WasmLoaderService } from '../../app/services/wasm-loader.service';
+import { DecimalPipe } from '@angular/common';
 
 @Component({
   selector: 'app-canvas',
-  imports: [],
+  imports: [DecimalPipe],
   templateUrl: './canvas.html',
   styleUrl: './canvas.scss',
 })
@@ -122,7 +123,6 @@ export class Canvas implements OnInit, OnDestroy {
       }
 
       const deltaTime = Math.floor(timestamp - lastTime); // Delta in milliseconds
-      this.frameTime.set(deltaTime);
 
       lastTime = timestamp;
 
@@ -132,6 +132,9 @@ export class Canvas implements OnInit, OnDestroy {
 
       // Rust generates pixels
       renderer.render_frame();
+
+      // Get frame time from Rust (it stores the delta we passed)
+      this.frameTime.set(renderer.frame_time());
 
       // Get pixel data from Rust
       const pixels = renderer.get_pixels();

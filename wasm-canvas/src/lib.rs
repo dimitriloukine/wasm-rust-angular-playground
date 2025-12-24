@@ -2,6 +2,7 @@
 // Docs: https://doc.rust-lang.org/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html
 
 mod math; // Vec2 struct for 2D vectors
+mod pattern; // Procedural pattern generation
 mod renderer; // SoftwareRenderer implementation
 
 // Re-export types that need to be accessible from JavaScript

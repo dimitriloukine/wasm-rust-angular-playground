@@ -10,10 +10,11 @@ import {
   HostListener,
 } from '@angular/core';
 import { WasmLoaderService } from '../../app/services/wasm-loader.service';
+import { DecimalPipe } from '@angular/common';
 
 @Component({
   selector: 'app-canvas2d',
-  imports: [],
+  imports: [DecimalPipe],
   templateUrl: './canvas2d.html',
   styleUrl: './canvas2d.scss',
 })
@@ -77,6 +78,9 @@ export class Canvas2d implements OnInit, OnDestroy {
 
       // Rust generates pixels
       renderer.render_frame();
+
+      // Get frame time from Rust (it stores the delta we passed)
+      this.frameTime.set(renderer.frame_time());
 
       // Get pixel data from Rust and display directly
       const pixels = renderer.get_pixels();

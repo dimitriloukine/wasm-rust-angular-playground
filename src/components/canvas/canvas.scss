@@ -10,6 +10,9 @@
   p {
     color: #666;
     margin-bottom: 1.5rem;
+    &.monospace {
+      font-family: monospace;
+    }
   }
 
   canvas {

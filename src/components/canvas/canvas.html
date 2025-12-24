@@ -1,6 +1,9 @@
 <div class="canvas-demo">
   <h2>Rust/WASM Canvas Demo</h2>
   <p>Checkered pattern (640x480, 40px squares) generated in Rust</p>
-
+  <p class="monospace">
+    Frame Time {{ frameTime() | number : '2.1-1' }} ms, Frame Rate
+    {{ frameRate() | number : '3.0-0' }} fps
+  </p>
   <canvas #canvas width="640" height="480"></canvas>
 </div>
