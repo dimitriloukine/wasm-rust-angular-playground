@@ -9,6 +9,7 @@
     "test": "ng test",
     "wasm:hello": "cd wasm-hello && . \"$HOME/.cargo/env\" && wasm-pack build --target web && rm -rf ../public/wasm-hello && cp -r pkg ../public/wasm-hello",
     "wasm:canvas": "cd wasm-canvas && . \"$HOME/.cargo/env\" && wasm-pack build --target web && rm -rf ../public/wasm-canvas && cp -r pkg ../public/wasm-canvas",
+    "wasm:next": "cd wasm-next && . \"$HOME/.cargo/env\" && wasm-pack build --target web && rm -rf ../public/wasm-next && cp -r pkg ../public/wasm-next ",
     "wasm:all": "npm run wasm:hello && npm run wasm:canvas"
   },
   "prettier": {

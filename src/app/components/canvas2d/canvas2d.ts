@@ -9,8 +9,8 @@ import {
   computed,
   HostListener,
 } from '@angular/core';
-import { WasmLoaderService } from '../../app/services/wasm-loader.service';
 import { DecimalPipe } from '@angular/common';
+import { WasmLoaderService } from '@app/services/wasm-loader.service';
 
 @Component({
   selector: 'app-canvas2d',
@@ -58,7 +58,7 @@ export class Canvas2d implements OnInit, OnDestroy {
     const wasm = await this.wasmLoader.loadModule('/wasm-canvas/wasm_canvas.js');
 
     // Create renderer instance in Rust
-    const renderer = wasm.SoftwareRenderer.new(640, 480, 40);
+    const renderer = wasm.SoftwareRenderer.new(640, 480, 32);
 
     // Render loop with delta time tracking
     let lastTime = 0;

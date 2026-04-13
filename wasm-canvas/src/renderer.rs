@@ -1,16 +1,36 @@
 use crate::math::Vec2;
+use crate::pattern;
+use std::f32::consts::PI;
 use wasm_bindgen::prelude::*;
+
+// Number of entries in sine/cosine lookup tables (power of 2 for fast modulo via bitwise AND)
+const ANGLE_STEPS: usize = 1024;
+const ANGLE_MASK: usize = ANGLE_STEPS - 1; // For wrapping: angle & ANGLE_MASK
+
+// Perspective information for each scanline (Mode 7 / floor rendering)
+struct ScanlineInfo {
+    depth: f32,        // World-space distance to this row
+    texture_step: f32, // Texture coordinate increment per screen pixel
+}
 
 // Struct to hold our software renderer state - Docs: https://doc.rust-lang.org/book/ch05-00-structs.html
 #[wasm_bindgen]
 pub struct SoftwareRenderer {
     pixels: Vec<u32>, // Our pixel buffer (packed RGBA as 32-bit integers)
+    tile: Vec<u32>,   // Pre-computed repeating pattern tile
+    tile_size: u32,   // Size of the tile (power of 2 for fast wrapping)
+    tile_mask: u32,   // Bitmask for wrapping (tile_size - 1)
     width: u32,
     height: u32,
-    square_size: u32,
-    offset: Vec2,             // Scroll offset (x, y)
-    velocity: Vec2,           // Current velocity (x, y) for smooth easing
-    render_start_time: f64,   // Timestamp when update() was called
+    horizon_y: u32,                  // Y coordinate of horizon line
+    floor_start_y: u32, // Y coordinate where floor rendering starts (after depth clamp)
+    scanline_lut: Vec<ScanlineInfo>, // Pre-computed perspective data per scanline
+    sin_table: Vec<f32>, // Pre-computed sine values [0..ANGLE_STEPS]
+    cos_table: Vec<f32>, // Pre-computed cosine values [0..ANGLE_STEPS]
+    angle: usize,       // Current rotation angle (index into sin/cos tables)
+    offset: Vec2,       // Camera position in world space (x, z)
+    velocity: Vec2,     // Current velocity (x, z) for smooth easing
+    render_start_time: f64, // Timestamp when update() was called
     last_render_time_ms: f64, // Actual time taken to render last frame (profiling)
 }
 
@@ -19,13 +39,78 @@ pub struct SoftwareRenderer {
 impl SoftwareRenderer {
     // Constructor - called from JS with SoftwareRenderer.new() - Docs: https://rustwasm.github.io/wasm-bindgen/reference/attributes/on-rust-exports.html
     pub fn new(width: u32, height: u32, square_size: u32) -> Self {
-        // Allocate one u32 per pixel (each u32 holds packed RGBA)
-        let pixels = Vec::with_capacity((width * height) as usize);
+        // Allocate pixel buffer once with exact size (never resize during rendering)
+        let pixel_count = (width * height) as usize;
+        let pixels = vec![0u32; pixel_count];
+
+        // Generate pre-computed tile using pattern module
+        // This separates pattern logic from rendering infrastructure
+        let (tile, tile_size) = pattern::generate_checkerboard_tile(square_size);
+
+        // Tile size is guaranteed to be a power of 2, so we can use bitwise AND for wrapping
+        // This is much faster than rem_euclid (1 bitwise op vs division)
+        let tile_mask = tile_size - 1;
+
+        // Perspective rendering setup (Mode 7 style)
+        let horizon_y = height / 3; // Horizon in upper third (raises camera viewpoint)
+        let camera_height = 100.0; // Height of camera above ground plane
+        let focal_length = 200.0; // Controls FOV (higher = narrower)
+        let max_depth = 700.0; // Clamp far field to prevent aliasing/moiré
+
+        // Pre-compute perspective data for each scanline from horizon to bottom
+        let scanline_count = (height - horizon_y) as usize;
+        let mut scanline_lut = Vec::with_capacity(scanline_count);
+        let mut floor_start_y = horizon_y; // Track where floor actually starts
+
+        for row in 0..scanline_count {
+            // Distance from camera increases as we go down the screen
+            // row 0 = horizon (far away), row (height-horizon_y) = bottom (close)
+            let screen_y = (row as f32) + 0.5; // Add 0.5 for pixel center
+
+            // Perspective formula: depth = (camera_height * focal_length) / screen_y
+            // Small screen_y (near horizon) → large depth (far away)
+            // Large screen_y (bottom) → small depth (close to camera)
+            let depth = (camera_height * focal_length) / screen_y;
+
+            // Skip scanlines beyond max_depth (too far = aliasing artifacts)
+            if depth > max_depth {
+                floor_start_y = horizon_y + row as u32 + 1;
+                continue;
+            }
+
+            // Texture step: how much world space one screen pixel covers
+            // Larger depth = more world space per pixel (tiles look bigger/closer)
+            let texture_step = depth / focal_length;
+
+            scanline_lut.push(ScanlineInfo {
+                depth,
+                texture_step,
+            });
+        }
+
+        // Pre-compute sine/cosine lookup tables for rotation
+        // This avoids expensive trig calls during rendering (classic game optimization)
+        let mut sin_table = Vec::with_capacity(ANGLE_STEPS);
+        let mut cos_table = Vec::with_capacity(ANGLE_STEPS);
+        for i in 0..ANGLE_STEPS {
+            let angle_radians = (i as f32) * 2.0 * PI / (ANGLE_STEPS as f32);
+            sin_table.push(angle_radians.sin());
+            cos_table.push(angle_radians.cos());
+        }
+
         Self {
             pixels,
+            tile,
+            tile_size,
+            tile_mask,
             width,
             height,
-            square_size,
+            horizon_y,
+            floor_start_y,
+            scanline_lut,
+            sin_table,
+            cos_table,
+            angle: 0,
             offset: Vec2::zero(),
             velocity: Vec2::zero(),
             render_start_time: 0.0,
@@ -41,34 +126,51 @@ impl SoftwareRenderer {
         // Process keys to determine target velocity
         let mut target_velocity = Vec2::zero();
         let speed = 960.0; // pixels per second
+        let mut rotation_change = 0i32; // Change in angle this frame
 
         for key in keys {
             match key.as_str() {
                 "ArrowUp" | "w" => target_velocity.y -= speed,
                 "ArrowDown" | "s" => target_velocity.y += speed,
-                "ArrowLeft" | "a" => target_velocity.x -= speed,
-                "ArrowRight" | "d" => target_velocity.x += speed,
+                "ArrowLeft" | "a" => rotation_change += 2, // Rotate counter-clockwise
+                "ArrowRight" | "d" => rotation_change -= 2, // Rotate clockwise
                 _ => {}
             }
         }
 
+        // Update rotation angle using lookup table indices (no trig needed!)
+        self.angle = ((self.angle as i32 + rotation_change) & ANGLE_MASK as i32) as usize;
+
         let delta_seconds: f32 = delta_time_ms as f32 / 1000.0;
+
+        // Transform movement based on current rotation (forward = direction we're facing)
+        // Use lookup tables instead of sin/cos computation
+        let cos_a = self.cos_table[self.angle];
+        let sin_a = self.sin_table[self.angle];
+
+        // Rotate velocity vector by current angle
+        let rotated_velocity_x = target_velocity.x * cos_a - target_velocity.y * sin_a;
+        let rotated_velocity_y = target_velocity.x * sin_a + target_velocity.y * cos_a;
+        let rotated_target = Vec2 {
+            x: rotated_velocity_x,
+            y: rotated_velocity_y,
+        };
 
         // Smoothly interpolate current velocity towards target velocity
         let acceleration: f32 = 800.0; // pixels per second squared (how fast we accelerate)
-        let friction: f32 = 0.97; // damping factor (closer to 0 = more friction)
+        let friction: f32 = 0.90; // damping factor per frame (closer to 0 = more friction)
 
-        if target_velocity.x != 0.0 || target_velocity.y != 0.0 {
+        if rotated_target.x != 0.0 || rotated_target.y != 0.0 {
             // Accelerate towards target velocity when keys are pressed
             self.velocity.x +=
-                (target_velocity.x - self.velocity.x) * acceleration * delta_seconds / 100.0;
+                (rotated_target.x - self.velocity.x) * acceleration * delta_seconds / 100.0;
             self.velocity.y +=
-                (target_velocity.y - self.velocity.y) * acceleration * delta_seconds / 100.0;
+                (rotated_target.y - self.velocity.y) * acceleration * delta_seconds / 100.0;
         } else if self.velocity.x != 0.0 || self.velocity.y != 0.0 {
             // Apply friction when no keys are pressed (ease out)
-            // Skip expensive powf() calculation if velocity is already zero
-            self.velocity.x *= friction.powf(delta_seconds * 60.0); // Normalize for framerate
-            self.velocity.y *= friction.powf(delta_seconds * 60.0);
+            // Simple multiply is much faster than powf() and more consistent
+            self.velocity.x *= friction;
+            self.velocity.y *= friction;
 
             // Stop completely when velocity is very small
             if self.velocity.x.abs() < 1.0 {
@@ -93,35 +195,66 @@ impl SoftwareRenderer {
     pub fn render_frame(&mut self) {
         // &mut self = mutable reference to this instance - Docs: https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html
 
-        // OPTIMIZATION: Pack RGBA into u32 - one write instead of four!
-        // Each pixel is one 32-bit integer where bytes are [R, G, B, A]
-        // This reduces write operations from 1,228,800 to 307,200 per frame
-        let pixel_count = (self.width * self.height) as usize;
-        self.pixels.resize(pixel_count, 0);
+        // OPTIMIZATION: Perspective floor rendering (Mode 7 / SNES style)
+        // Uses pre-computed scanline lookup table for depth and texture stepping
+        // Each row samples texture at different scale based on distance
+        const SKY_COLOR: u32 = 0xFF_EB_CE_87; // Light blue sky (ABGR in little-endian)
 
-        // Pre-compute packed pixel values
-        // On little-endian (most systems), u32 0xAABBGGRR becomes bytes [RR, GG, BB, AA]
-        // So for RGBA format we need: (A << 24) | (B << 16) | (G << 8) | R
-        const RED_PIXEL: u32 = 0xFF_00_00_FF; // A=255, B=0, G=0, R=255
-        const WHITE_PIXEL: u32 = 0xFF_FF_FF_FF; // A=255, B=255, G=255, R=255
+        // Camera position and orientation in world space
+        let camera_x = self.offset.x;
+        let camera_z = self.offset.y;
 
-        let mut pixel_idx = 0;
+        // Get rotation from lookup tables (no trig computation needed!)
+        let cos_a = self.cos_table[self.angle];
+        let sin_a = self.sin_table[self.angle];
 
-        for y in 0..self.height {
+        // Render sky (everything above floor_start_y, including clamped far field)
+        // Use fill() for better performance than individual pixel writes
+        let sky_pixel_count = (self.floor_start_y * self.width) as usize;
+        self.pixels[..sky_pixel_count].fill(SKY_COLOR);
+
+        // Render perspective floor (only scanlines within depth range)
+        for y in self.floor_start_y..self.height {
+            let scanline_idx = (y - self.floor_start_y) as usize;
+            let info = &self.scanline_lut[scanline_idx];
+
+            // OPTIMIZATION: Rotate the step vector once per scanline, not per pixel
+            // This reduces per-pixel work from 4 multiplies to 2 additions
+
+            // In camera space: starting position (left edge) and step per pixel
+            let cam_x_start = -(self.width as f32 / 2.0) * info.texture_step;
+            let cam_z = info.depth;
+            let cam_x_step = info.texture_step;
+
+            // Rotate the starting position by camera angle
+            let rotated_start_x = cam_x_start * cos_a - cam_z * sin_a;
+            let rotated_start_z = cam_x_start * sin_a + cam_z * cos_a;
+
+            // Rotate the step vector by camera angle (how much world pos changes per screen pixel)
+            let rotated_step_x = cam_x_step * cos_a;
+            let rotated_step_z = cam_x_step * sin_a;
+
+            // Translate to camera position
+            let mut world_x = camera_x + rotated_start_x;
+            let mut world_z = camera_z + rotated_start_z;
+
+            let screen_row_start = (y * self.width) as usize;
+
+            // Sample texture for each pixel in this scanline
+            // Incrementally add the rotated step (just 2 additions per pixel!)
             for x in 0..self.width {
-                // Apply scrolling offset with wrapping (modulo prevents underflow)
-                let scroll_x = ((x as f32 - self.offset.x).rem_euclid(self.width as f32)) as u32;
-                let scroll_y = ((y as f32 - self.offset.y).rem_euclid(self.height as f32)) as u32;
+                // Fast wrapping using bitwise AND (tile_size is power of 2)
+                // This replaces expensive rem_euclid with single bitwise operation
+                let tile_x = (world_x as i32 & self.tile_mask as i32) as usize;
+                let tile_z = (world_z as i32 & self.tile_mask as i32) as usize;
 
-                // Calculate checkerboard pattern
-                let square_x = scroll_x / self.square_size;
-                let square_y = scroll_y / self.square_size;
-                let is_red = (square_x + square_y) % 2 == 0;
+                // Lookup pixel from tile
+                let tile_idx = tile_z * self.tile_size as usize + tile_x;
+                self.pixels[screen_row_start + x as usize] = self.tile[tile_idx];
 
-                // Write entire pixel as single u32 - 4× faster than separate writes!
-                self.pixels[pixel_idx] = if is_red { RED_PIXEL } else { WHITE_PIXEL };
-
-                pixel_idx += 1;
+                // Step to next pixel (classic DDA / incremental technique)
+                world_x += rotated_step_x;
+                world_z += rotated_step_z;
             }
         }
 
@@ -135,11 +268,17 @@ impl SoftwareRenderer {
     pub fn get_pixels(&self) -> Vec<u8> {
         // Reinterpret u32 buffer as u8 bytes
         // Each u32 becomes 4 consecutive u8 values (RGBA)
+
         // Safe because we're just changing how we view the same memory
-        unsafe {
-            std::slice::from_raw_parts(self.pixels.as_ptr() as *const u8, self.pixels.len() * 4)
-                .to_vec()
-        }
+        // unsafe {
+        //     std::slice::from_raw_parts(self.pixels.as_ptr() as *const u8, self.pixels.len() * 4)
+        //         .to_vec()
+        // }
+
+        self.pixels
+            .iter()
+            .flat_map(|&pixel| pixel.to_le_bytes())
+            .collect()
     }
 
     // Getters for dimensions

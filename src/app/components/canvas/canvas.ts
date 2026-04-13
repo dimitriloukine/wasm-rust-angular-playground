@@ -9,8 +9,8 @@ import {
   computed,
   signal,
 } from '@angular/core';
-import { WasmLoaderService } from '../../app/services/wasm-loader.service';
 import { DecimalPipe } from '@angular/common';
+import { WasmLoaderService } from '@app/services/wasm-loader.service';
 
 @Component({
   selector: 'app-canvas',
@@ -57,7 +57,7 @@ export class Canvas implements OnInit, OnDestroy {
     const wasm = await this.wasmLoader.loadModule('/wasm-canvas/wasm_canvas.js');
 
     // Create renderer instance in Rust
-    const renderer = wasm.SoftwareRenderer.new(640, 480, 40);
+    const renderer = wasm.SoftwareRenderer.new(640, 480, 32);
 
     // Setup WebGL texture
     const texture = gl.createTexture();
@@ -122,7 +122,7 @@ export class Canvas implements OnInit, OnDestroy {
         lastTime = timestamp;
       }
 
-      const deltaTime = Math.floor(timestamp - lastTime); // Delta in milliseconds
+      const deltaTime = Math.max(1, Math.floor(timestamp - lastTime)); // Ensure minimum 1ms to avoid zero delta
 
       lastTime = timestamp;
 

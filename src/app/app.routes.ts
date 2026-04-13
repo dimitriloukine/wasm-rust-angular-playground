@@ -1,10 +1,9 @@
 import { Routes } from '@angular/router';
-import { Basic } from './components/basic/basic';
-import { Canvas } from '../components/canvas/canvas';
-import { Canvas2d } from '../components/canvas2d/canvas2d';
+import { Canvas } from './components/canvas/canvas';
+import { Canvas2d } from './components/canvas2d/canvas2d';
+import { Next } from './components/next/next';
 
 export const routes: Routes = [
-  { title: 'Basic', path: 'basic', component: Basic },
   {
     title: 'Canvas',
     path: 'canvas',
@@ -14,5 +13,10 @@ export const routes: Routes = [
     title: 'Canvas 2D',
     path: 'canvas2d',
     component: Canvas2d,
+  },
+  {
+    title: 'Next',
+    path: 'next',
+    component: Next,
   },
 ];

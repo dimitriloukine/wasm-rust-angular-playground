@@ -1,5 +1,5 @@
 [package]
-name = "wasm-hello"
+name = "wasm-next"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,4 +7,4 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-wasm-bindgen = "0.2"
+wasm-bindgen = "0.2.106"
