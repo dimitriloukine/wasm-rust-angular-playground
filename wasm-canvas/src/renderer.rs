@@ -118,6 +118,91 @@ impl SoftwareRenderer {
         }
     }
 
+    // Constructor with external texture data from PNG/image file
+    pub fn new_with_texture(
+        width: u32,
+        height: u32,
+        texture_size: u32,
+        texture_data: Vec<u8>,
+    ) -> Self {
+        // Allocate pixel buffer once with exact size (never resize during rendering)
+        let pixel_count = (width * height) as usize;
+        let pixels = vec![0u32; pixel_count];
+
+        // Convert RGBA u8 array from JavaScript to packed u32 format
+        // JavaScript ImageData is RGBA, we pack to u32 little-endian (ABGR in memory)
+        let tile_pixel_count = (texture_size * texture_size) as usize;
+        let mut tile = Vec::with_capacity(tile_pixel_count);
+
+        for chunk in texture_data.chunks_exact(4) {
+            let r = chunk[0];
+            let g = chunk[1];
+            let b = chunk[2];
+            let a = chunk[3];
+            // Pack as little-endian u32: ABGR in memory order
+            let packed = ((a as u32) << 24) | ((b as u32) << 16) | ((g as u32) << 8) | (r as u32);
+            tile.push(packed);
+        }
+
+        // Texture size must be power of 2 for fast bitwise wrapping
+        let tile_mask = texture_size - 1;
+
+        // Perspective rendering setup (Mode 7 style)
+        let horizon_y = height / 3;
+        let camera_height = 100.0;
+        let focal_length = 200.0;
+        let max_depth = 700.0;
+
+        // Pre-compute perspective data for each scanline
+        let scanline_count = (height - horizon_y) as usize;
+        let mut scanline_lut = Vec::with_capacity(scanline_count);
+        let mut floor_start_y = horizon_y;
+
+        for row in 0..scanline_count {
+            let screen_y = (row as f32) + 0.5;
+            let depth = (camera_height * focal_length) / screen_y;
+
+            if depth > max_depth {
+                floor_start_y = horizon_y + row as u32 + 1;
+                continue;
+            }
+
+            let texture_step = depth / focal_length;
+            scanline_lut.push(ScanlineInfo {
+                depth,
+                texture_step,
+            });
+        }
+
+        // Pre-compute sine/cosine lookup tables
+        let mut sin_table = Vec::with_capacity(ANGLE_STEPS);
+        let mut cos_table = Vec::with_capacity(ANGLE_STEPS);
+        for i in 0..ANGLE_STEPS {
+            let angle_radians = (i as f32) * 2.0 * PI / (ANGLE_STEPS as f32);
+            sin_table.push(angle_radians.sin());
+            cos_table.push(angle_radians.cos());
+        }
+
+        Self {
+            pixels,
+            tile,
+            tile_size: texture_size,
+            tile_mask,
+            width,
+            height,
+            horizon_y,
+            floor_start_y,
+            scanline_lut,
+            sin_table,
+            cos_table,
+            angle: 0,
+            offset: Vec2::zero(),
+            velocity: Vec2::zero(),
+            render_start_time: 0.0,
+            last_render_time_ms: 0.0,
+        }
+    }
+
     // Update animation based on time elapsed and pressed keys
     pub fn update(&mut self, delta_time_ms: u32, keys: Vec<String>) {
         // Start profiling timer
@@ -130,9 +215,9 @@ impl SoftwareRenderer {
 
         for key in keys {
             match key.as_str() {
-                "ArrowUp" | "w" => target_velocity.y -= speed,
-                "ArrowDown" | "s" => target_velocity.y += speed,
-                "ArrowLeft" | "a" => rotation_change += 2, // Rotate counter-clockwise
+                "ArrowUp" | "z" => target_velocity.y += speed,
+                "ArrowDown" | "s" => target_velocity.y -= speed,
+                "ArrowLeft" | "q" => rotation_change += 2, // Rotate counter-clockwise
                 "ArrowRight" | "d" => rotation_change -= 2, // Rotate clockwise
                 _ => {}
             }
@@ -187,8 +272,8 @@ impl SoftwareRenderer {
 
         // Wrap offset to prevent unbounded growth and maintain performance
         // Large float values cause slower arithmetic operations
-        self.offset.x = self.offset.x.rem_euclid(self.width as f32);
-        self.offset.y = self.offset.y.rem_euclid(self.height as f32);
+        self.offset.x = self.offset.x.rem_euclid(self.tile_size as f32);
+        self.offset.y = self.offset.y.rem_euclid(self.tile_size as f32);
     }
 
     // Render a frame - updates the pixel buffer

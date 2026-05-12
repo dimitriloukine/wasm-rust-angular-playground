@@ -50,6 +50,15 @@ export class Canvas2d implements OnInit, OnDestroy {
     }
   }
 
+  private loadTexture(path: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = path;
+    });
+  }
+
   private async setupCanvas2DRenderer(): Promise<void> {
     const canvas = this.canvasRef.nativeElement;
     const ctx = canvas.getContext('2d')!;
@@ -57,8 +66,27 @@ export class Canvas2d implements OnInit, OnDestroy {
     // Load WASM module
     const wasm = await this.wasmLoader.loadModule('/wasm-canvas/wasm_canvas.js');
 
-    // Create renderer instance in Rust
-    const renderer = wasm.SoftwareRenderer.new(640, 480, 32);
+    // Try to load texture from PNG file, fallback to procedural if it fails
+    let renderer;
+    try {
+      const textureImage = await this.loadTexture('/dirt-1-128.png');
+      const textureSize = 128;
+
+      // Extract RGBA pixel data from image
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = textureSize;
+      tempCanvas.height = textureSize;
+      const tempCtx = tempCanvas.getContext('2d')!;
+      tempCtx.drawImage(textureImage, 0, 0);
+      const imageData = tempCtx.getImageData(0, 0, textureSize, textureSize);
+      const texturePixels = Array.from(imageData.data);
+
+      console.log('✅ Loaded PNG texture:', textureSize, 'x', textureSize, 'pixels');
+      renderer = wasm.SoftwareRenderer.new_with_texture(640, 480, textureSize, texturePixels);
+    } catch (error) {
+      console.warn('⚠️ Failed to load texture, using procedural fallback:', error);
+      renderer = wasm.SoftwareRenderer.new(640, 480, 64);
+    }
 
     // Render loop with delta time tracking
     let lastTime = 0;
