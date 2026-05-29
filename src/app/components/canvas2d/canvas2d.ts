@@ -38,7 +38,22 @@ export class Canvas2d implements OnInit, OnDestroy {
   }
 
   frameTime = signal(1);
+  frameTimes120 = signal<number[]>([]);
   frameRate = computed(() => Math.floor(1000 / this.frameTime()));
+  averageFrameTime = computed(() => {
+    const times = this.frameTimes120();
+    if (times.length === 0) return 0;
+    return times.reduce((sum, time) => sum + time, 0) / times.length;
+  });
+  averageFrameRate = computed(() => Math.floor(1000 / this.averageFrameTime()));
+  peakFrameTime = computed(() => {
+    const times = this.frameTimes120();
+    return times.length > 0 ? Math.max(...times) : 0;
+  });
+  floorFrameTime = computed(() => {
+    const times = this.frameTimes120();
+    return times.length > 0 ? Math.min(...times) : 0;
+  });
 
   ngOnInit(): void {
     this.setupCanvas2DRenderer();
@@ -68,25 +83,20 @@ export class Canvas2d implements OnInit, OnDestroy {
 
     // Try to load texture from PNG file, fallback to procedural if it fails
     let renderer;
-    try {
-      const textureImage = await this.loadTexture('/dirt-1-128.png');
-      const textureSize = 128;
+    const textureImage = await this.loadTexture('/dirt-1-128.png');
+    const textureSize = 128;
 
-      // Extract RGBA pixel data from image
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = textureSize;
-      tempCanvas.height = textureSize;
-      const tempCtx = tempCanvas.getContext('2d')!;
-      tempCtx.drawImage(textureImage, 0, 0);
-      const imageData = tempCtx.getImageData(0, 0, textureSize, textureSize);
-      const texturePixels = Array.from(imageData.data);
+    // Extract RGBA pixel data from image
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = textureSize;
+    tempCanvas.height = textureSize;
+    const tempCtx = tempCanvas.getContext('2d')!;
+    tempCtx.drawImage(textureImage, 0, 0);
+    const imageData = tempCtx.getImageData(0, 0, textureSize, textureSize);
+    const texturePixels = Array.from(imageData.data);
 
-      console.log('✅ Loaded PNG texture:', textureSize, 'x', textureSize, 'pixels');
-      renderer = wasm.SoftwareRenderer.new_with_texture(640, 480, textureSize, texturePixels);
-    } catch (error) {
-      console.warn('⚠️ Failed to load texture, using procedural fallback:', error);
-      renderer = wasm.SoftwareRenderer.new(640, 480, 64);
-    }
+    console.log('✅ Loaded PNG texture:', textureSize, 'x', textureSize, 'pixels');
+    renderer = wasm.SoftwareRenderer.new_with_texture(640, 480, textureSize, texturePixels);
 
     // Render loop with delta time tracking
     let lastTime = 0;
@@ -108,7 +118,12 @@ export class Canvas2d implements OnInit, OnDestroy {
       renderer.render_frame();
 
       // Get frame time from Rust (it stores the delta we passed)
-      this.frameTime.set(renderer.frame_time());
+      const currentFrameTime = renderer.frame_time();
+      this.frameTime.set(currentFrameTime);
+
+      // Maintain rolling buffer of last 120 frame times
+      const times = [...this.frameTimes120(), currentFrameTime];
+      this.frameTimes120.set(times.slice(-120));
 
       // Get pixel data from Rust and display directly
       const pixels = renderer.get_pixels();

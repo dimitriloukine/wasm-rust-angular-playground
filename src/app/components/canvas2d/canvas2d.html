@@ -2,8 +2,12 @@
   <h2>Canvas 2D Demo</h2>
   <p>Same Rust framebuffer, rendered with Canvas 2D API (no WebGL)</p>
   <p class="monospace">
-    Frame Time {{ frameTime() | number : '2.1-1' }} ms, Frame Rate
-    {{ frameRate() | number : '4.0-0' }} fps
+    Frame Time {{ averageFrameTime() | number: '2.1-1' }} ms, Frame Rate
+    {{ averageFrameRate() | number: '4.0-0' }} fps
+  </p>
+  <p class="monospace">
+    Peak: {{ peakFrameTime() | number: '1.2-2' }}ms Floor:
+    {{ floorFrameTime() | number: '1.2-2' }}ms
   </p>
   <canvas #canvas width="640" height="480"></canvas>
 </div>

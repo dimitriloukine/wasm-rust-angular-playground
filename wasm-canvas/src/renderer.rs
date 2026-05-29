@@ -277,6 +277,7 @@ impl SoftwareRenderer {
     }
 
     // Render a frame - updates the pixel buffer
+    #[inline(always)]
     pub fn render_frame(&mut self) {
         // &mut self = mutable reference to this instance - Docs: https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html
 
@@ -320,26 +321,38 @@ impl SoftwareRenderer {
             let rotated_step_z = cam_x_step * sin_a;
 
             // Translate to camera position
-            let mut world_x = camera_x + rotated_start_x;
-            let mut world_z = camera_z + rotated_start_z;
+            let world_x_start = camera_x + rotated_start_x;
+            let world_z_start = camera_z + rotated_start_z;
+
+            // OPTIMIZATION: Convert to fixed-point (16.16 format) for integer math
+            // This replaces float addition with much faster integer addition in the inner loop
+            // Fixed-point: multiply by 65536 (2^16) to store fractional part in lower 16 bits
+            let mut world_x_fixed = (world_x_start * 65536.0) as i32;
+            let mut world_z_fixed = (world_z_start * 65536.0) as i32;
+            let step_x_fixed = (rotated_step_x * 65536.0) as i32;
+            let step_z_fixed = (rotated_step_z * 65536.0) as i32;
 
             let screen_row_start = (y * self.width) as usize;
 
             // Sample texture for each pixel in this scanline
-            // Incrementally add the rotated step (just 2 additions per pixel!)
+            // Fixed-point integer addition (just 2 additions per pixel!)
             for x in 0..self.width {
-                // Fast wrapping using bitwise AND (tile_size is power of 2)
-                // This replaces expensive rem_euclid with single bitwise operation
-                let tile_x = (world_x as i32 & self.tile_mask as i32) as usize;
-                let tile_z = (world_z as i32 & self.tile_mask as i32) as usize;
+                // Extract integer part (upper 16 bits) and apply texture wrapping
+                // Right shift by 16 to get integer part, then mask with tile_size - 1
+                let tile_x = ((world_x_fixed >> 16) & self.tile_mask as i32) as usize;
+                let tile_z = ((world_z_fixed >> 16) & self.tile_mask as i32) as usize;
 
-                // Lookup pixel from tile
+                // Lookup pixel from tile using unsafe for no bounds check
+                // Safe because bitmask guarantees tile_x and tile_z are in bounds
                 let tile_idx = tile_z * self.tile_size as usize + tile_x;
-                self.pixels[screen_row_start + x as usize] = self.tile[tile_idx];
+                unsafe {
+                    *self.pixels.get_unchecked_mut(screen_row_start + x as usize) =
+                        *self.tile.get_unchecked(tile_idx);
+                }
 
-                // Step to next pixel (classic DDA / incremental technique)
-                world_x += rotated_step_x;
-                world_z += rotated_step_z;
+                // Step to next pixel using integer addition (faster than float)
+                world_x_fixed += step_x_fixed;
+                world_z_fixed += step_z_fixed;
             }
         }
 
@@ -351,19 +364,13 @@ impl SoftwareRenderer {
     // Get pixel data as a JS-accessible slice
     // Converts our u32 buffer to u8 bytes that WebGL expects
     pub fn get_pixels(&self) -> Vec<u8> {
-        // Reinterpret u32 buffer as u8 bytes
+        // Zero-copy reinterpretation: u32 buffer as u8 bytes
         // Each u32 becomes 4 consecutive u8 values (RGBA)
-
         // Safe because we're just changing how we view the same memory
-        // unsafe {
-        //     std::slice::from_raw_parts(self.pixels.as_ptr() as *const u8, self.pixels.len() * 4)
-        //         .to_vec()
-        // }
-
-        self.pixels
-            .iter()
-            .flat_map(|&pixel| pixel.to_le_bytes())
-            .collect()
+        unsafe {
+            std::slice::from_raw_parts(self.pixels.as_ptr() as *const u8, self.pixels.len() * 4)
+                .to_vec()
+        }
     }
 
     // Getters for dimensions
