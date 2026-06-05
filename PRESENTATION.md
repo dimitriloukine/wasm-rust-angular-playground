@@ -1,8 +1,10 @@
 # WebAssembly (WASM)
 
-## J'implemente pas un figma, j'implémente figma.
+![WASM Logo](https://upload.wikimedia.org/wikipedia/commons/1/1f/WebAssembly_Logo.svg)
 
-![Rust Logo](public/goku-power.png)
+---
+
+![Doliprane](public/doliprane.png)
 
 ---
 
@@ -15,7 +17,11 @@
 
 ### En bref
 
-Du code compilé qui tourne dans ton navigateur aussi vite que du code natif
+Du code compilé qui tourne dans ton navigateur aussi vite que du code natif, via une couche de traduction bas niveau.
+
+---
+
+![Rust Logo](public/goku-power.png)
 
 ---
 
@@ -23,7 +29,7 @@ Du code compilé qui tourne dans ton navigateur aussi vite que du code natif
 
 ### Le Pipeline
 
-1. **Écriture** → Code en langage source (Rust, C++, etc.)
+1. **Écriture** → Code en langage source compilé
 2. **Compilation** → Binaire `.wasm`
 3. **Chargement** → Import dans JavaScript
 4. **Exécution** → Environnement d'execution dans le navigateur
@@ -42,14 +48,10 @@ Du code compilé qui tourne dans ton navigateur aussi vite que du code natif
 ### Avantages Techniques
 
 - **Parsing rapide** : Format binaire dense
-- **Compilation AOT** : Ahead-of-time dans le navigateur
 - **Typage statique** : Vérification à la compilation
+- **Compilation AOT** : Ahead-of-time dans le navigateur
 - **Sécurité** : Sandbox isolé de la machine hôte
 - **Performance** : Performances quasi native
-
----
-
-![Doliprane](public/doliprane.png)
 
 ---
 
@@ -63,10 +65,11 @@ Du code compilé qui tourne dans ton navigateur aussi vite que du code natif
 - **Calcul intensif** : Simulations, physique, maths
 - **Traitement multimédia** : Encodage/décodage vidéo, audio, DSP
 - **Compression/décompression** : Algorithmes lourds
+- **Emulateurs** : Vieilles consoles, vieux hardware.
 
 ---
 
-#### Applications Professionnelles
+#### Applications
 
 - **CAD/3D** : AutoCAD, Figma utilisent WASM
 - **Outils de design** : Photoshop Web
@@ -85,14 +88,18 @@ Du code compilé qui tourne dans ton navigateur aussi vite que du code natif
 
 ### Quand NE PAS utiliser WASM
 
-- Manipulation DOM (reste avec JavaScript)
+- Manipulation DOM
 - Applications CRUD simples
 - Prototypes rapides
-- Petites apps où JS suffit
+- Tout ce qui est dans le domaine des technologies Web
 
 ---
 
 ## Quels langages ?
+
+![Doliprane](public/lang.png)
+
+---
 
 ### Langages Candidats
 
@@ -112,13 +119,19 @@ C'est java en moins pire.
 
 Compilé, ça embarque son runtime ce qui n'est pas génial quand on doit envoyer son binaire à l'utilisateur à chaque fois.
 
-Peut être bien pour des codebases complexes
+Peut être bien pour des codebases complexes. Il y a un framework microsoft microsoft qui s'appelle Blazor autour de ça.
 
 ---
 
 #### Go : C'est bien mais c'est pas ce qu'on veut
 
 Compilé, Go embarque un runtime avec un garbage collector, ça fonctionne mais ça serait mieux sans.
+
+---
+
+#### AssemblyScript : Pour ceux qui ont peur des vrais languages
+
+C'est construit autour de la promesse d'écrire quelque chose de similaire à TS et de le compiler en WASM, mais c'est à coté de la plaque.
 
 ---
 
@@ -133,7 +146,7 @@ Par un concours de circonstances, Les planètes se sont alignées et un language
 | Langage            | Support | Maturité                              |
 | ------------------ | ------- | ------------------------------------- |
 | **Rust**           | ★★★★★   | Production-ready                      |
-| **C/C++**          | ★★★★★   | Mature (Emscripten)                   |
+| **C/C++**          | ★★★★★   | Mature, plein de codebases            |
 | **Go**             | ★★★★☆   | Bon support, mais embarque un runtime |
 | **C#**             | ★★★★☆   | Via Blazor, embarque un runtime       |
 | **AssemblyScript** | ★★★☆☆   | TypeScript-like                       |
@@ -249,6 +262,8 @@ pub fn calculate(x: i32, y: i32) -> i32 {
 }
 ```
 
+Bindgen est la couche automagique qui se charge d'exposer les fonctions coté JS et de convertir les datatypes JS en leur équivalent coté Rust.
+
 ---
 
 ### 5. Compiler
@@ -331,13 +346,13 @@ run();
 ✅ **Performance** : Vitesse native dans le navigateur  
 ✅ **Portabilité** : Code réutilisable partout  
 ✅ **Sécurité** : Sandbox + types forts  
-✅ **Futur-proof** : Standard web en croissance
+✅ **Futur-proof** : Standard web
 
 ### Pourquoi choisir Rust ?
 
 🦀 **Meilleur DX** : Tooling moderne et intuitif  
 🦀 **Écosystème mature** : wasm-pack, wasm-bindgen  
-🦀 **Performance maximale** : Pas de GC, optimisations LLVM  
+🦀 **Performance maximale** : Pas de Garbage collector, optimisations LLVM  
 🦀 **Communauté** : Support actif et ressources abondantes
 
 ---
