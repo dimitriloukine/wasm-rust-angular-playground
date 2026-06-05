@@ -1,0 +1,8 @@
+# Rust build artifacts
+/target/
+
+# WASM build output
+/pkg/
+
+# Cargo lock file (optional, uncomment if you want to ignore it)
+# Cargo.lock
