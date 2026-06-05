@@ -1,0 +1,14 @@
+<div class="hello-container">
+  <h2>Rust WASM Hello World</h2>
+
+  <div class="message-box">
+    <h3>Message from Rust:</h3>
+    <p class="hello-message">{{ helloMessage() }}</p>
+  </div>
+  @if (greetMessage()) {
+    <div class="message-box">
+      <h3>Personalized Greeting:</h3>
+      <p class="greet-message">{{ greetMessage() }}</p>
+    </div>
+  }
+</div>
